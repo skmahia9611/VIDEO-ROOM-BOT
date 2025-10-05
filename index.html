@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Premium Video Player with Dynamic Playlist</title>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color: #121212;
+      --primary-surface-color: #1e1e1e;
+      --secondary-surface-color: #272727;
+      --text-primary: #f1f1f1;
+      --text-secondary: #aaa;
+      --accent-color: #3ea6ff;
+      --hover-bg-color: #333;
+      --scrollbar-thumb-color: #555;
+      --scrollbar-track-color: var(--primary-surface-color);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Hind Siliguri', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+    }
+
+    .app-container {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+    }
+
+    /* Player Section */
+    .player-section {
+      flex: 3;
+      display: flex;
+      flex-direction: column;
+      background-color: #000;
+    }
+
+    .player-wrapper {
+      position: relative;
+      width: 100%;
+      background-color: #000;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .player-wrapper iframe,
+    .player-wrapper video {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    
+    .loading-indicator, .error-message {
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+    }
+
+    /* Playlist Section */
+    .playlist-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background-color: var(--primary-surface-color);
+      overflow-y: auto;
+      padding: 16px 8px;
+    }
+    
+    .playlist-header {
+        font-size: 1.1rem;
+        font-weight: 700;
+        padding: 0 8px 16px 8px;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--secondary-surface-color);
+        margin-bottom: 16px;
+    }
+
+    .video-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .video-card {
+      cursor: pointer;
+      display: flex;
+      gap: 12px;
+      padding: 8px;
+      border-radius: 8px;
+      transition: background-color 0.2s ease-in-out;
+      border: 2px solid transparent;
+    }
+
+    .video-card:hover {
+      background-color: var(--hover-bg-color);
+    }
+    
+    .video-card.active {
+      background-color: var(--secondary-surface-color);
+      border-color: var(--accent-color);
+    }
+
+    .thumbnail-container {
+      position: relative;
+      width: 140px;
+      flex-shrink: 0;
+    }
+    
+    .video-card.active .thumbnail-container::after {
+        content: '▶ এখন চলছে';
+        position: absolute;
+        bottom: 5px;
+        left: 5px;
+        background-color: var(--accent-color);
+        color: #fff;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+    }
+
+    .thumbnail-container img {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      display: block;
+      border-radius: 8px;
+    }
+
+    .video-duration {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      background-color: rgba(0, 0, 0, 0.85);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .video-card.active .video-duration {
+        display: none;
+    }
+
+    .video-meta {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding-top: 4px;
+      overflow: hidden;
+    }
+
+    .video-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin: 0 0 6px 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .video-info {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* Custom Scrollbar */
+    .playlist-section::-webkit-scrollbar {
+      width: 8px;
+    }
+    .playlist-section::-webkit-scrollbar-track {
+      background: var(--scrollbar-track-color);
+    }
+    .playlist-section::-webkit-scrollbar-thumb {
+      background-color: var(--scrollbar-thumb-color);
+      border-radius: 10px;
+      border: 2px solid var(--scrollbar-track-color);
+    }
+
+    /* Responsive adjustments for smaller screens */
+    @media (max-width: 850px) {
+      .app-container {
+        flex-direction: column;
+        height: auto;
+        overflow: auto;
+      }
+      .player-section, .playlist-section {
+        flex: none;
+        width: 100%;
+      }
+      .playlist-section {
+        height: auto;
+        max-height: 60vh;
+      }
+      .thumbnail-container {
+        width: 120px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <div class="player-section">
+      <div class="player-wrapper" id="player-container"></div>
+    </div>
+    <div class="playlist-section">
+      <div class="playlist-header">পরবর্তী ভিডিও</div>
+      <div class="video-feed" id="video-feed"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script>
+    const VideoPlayerApp = {
+      config: {
+        videos: [
+          {
+            title: "BIG FACK",
+            channel: "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
+            duration: "01.00",
+            thumbnail: "https://i.postimg.cc/QMhcv0zW/a5ffd4aa3aec07fa129bd20d465333a8-18.jpg",
+            url: "https://www.dropbox.com/scl/fi/5gdidjh9d354pkede14pk/xvideos.com_408f342fd85e3129a095abeb7634e878-2.mp4?rlkey=0mru6yssuou8nofrra8kc8mqz&st=zxn3tdt6&raw=1"
+          },
+          {
+            title: "NEW HOT SEX ",
+            channel: "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
+            duration: "09:11",
+            thumbnail: "https://i.postimg.cc/PJp3VT32/88218600d99facf22858ac30508be8d5-29.jpg",
+            url: "https://www.dropbox.com/scl/fi/hv5b26pt87bcwbhjy1c6z/xvideos.com_88218600d99facf22858ac30508be8d5.mp4?rlkey=nfvywfc7nar9khzn7dxoeuyty&st=p4vbfutb&dl=1" 
+          },
+          {
+            "title": "HORNYHOSTEL - Amy Amor",
+            "channel": "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
+            "duration": "20:20",
+            thumbnail: "https://i.postimg.cc/Tw958DSj/7e849ce80a027ea990f896b3e46c906a-7.jpg",            
+            url: "https://www.dropbox.com/scl/fi/q1bn4cbsnzshgu3d2b7dw/xvideos.com_7e849ce80a027ea990f896b3e46c906a.mp4?rlkey=zc35rhx58ugxu20k83ags6vec&st=2721x5wv&dl=1" 
+          }, 
+          {
+            title: "Big Buck Bunny - Sample",
+            channel: "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
+            duration: "03:32",
+            thumbnail: "",
+            url: "" 
+          }
+        ]
+      },
+
+      state: {
+        currentHlsInstance: null,
+        activeVideoElement: null,
+        lastTap: 0,
+      },
+
+      elements: {
+        playerContainer: document.getElementById('player-container'),
+        videoFeed: document.getElementById('video-feed'),
+      },
+      
+      init() {
+        this.renderVideoFeed();
+        this.loadVideo(0, true);
+        this.addDoubleTapListener();
+      },
+
+      renderVideoFeed() {
+        this.elements.videoFeed.innerHTML = '';
+        this.config.videos.forEach((video, index) => {
+          if (!video.url) return;
+          const card = document.createElement('div');
+          card.className = 'video-card';
+          card.onclick = () => this.loadVideo(index, true);
+          card.innerHTML = `
+            <div class="thumbnail-container">
+              <img src="${video.thumbnail}" alt="${video.title}" loading="lazy">
+              <span class="video-duration">${video.duration}</span>
+            </div>
+            <div class="video-meta">
+              <h3 class="video-title">${video.title}</h3>
+              <div class="video-info">${video.channel}</div>
+            </div>`;
+          this.elements.videoFeed.appendChild(card);
+        });
+      },
+
+      loadVideo(index, autoplay = false) {
+        if (this.state.currentHlsInstance) {
+          this.state.currentHlsInstance.destroy();
+        }
+        this.state.currentHlsInstance = null;
+        this.state.activeVideoElement = null;
+        this.elements.playerContainer.innerHTML = `<div class="loading-indicator">লোড হচ্ছে...</div>`;
+        this.highlightActiveCard(index);
+
+        const videoData = this.config.videos[index];
+        const url = videoData.url;
+
+        if (this.isVideoType(url, 'direct')) {
+          this.createDirectVideoPlayer(url, autoplay);
+        } else if (this.isVideoType(url, 'hls')) {
+          this.createHlsPlayer(url, autoplay);
+        } else {
+          this.createIframePlayer(url, autoplay);
+        }
+      },
+      
+      createIframePlayer(url, autoplay) {
+        const iframe = document.createElement('iframe');
+        const urlObj = new URL(url);
+        if (autoplay) {
+            urlObj.searchParams.set('autoplay', '1');
+        }
+        iframe.src = urlObj.toString();
+        iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+        iframe.setAttribute('allowfullscreen', '');
+        
+        this.elements.playerContainer.innerHTML = '';
+        this.elements.playerContainer.appendChild(iframe);
+      },
+
+      createHlsPlayer(url, autoplay) {
+        const video = this.createVideoElement(autoplay);
+        this.elements.playerContainer.innerHTML = ''; 
+
+        if (Hls.isSupported()) {
+          const hls = new Hls();
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          this.state.currentHlsInstance = hls;
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url;
+        } else {
+          this.elements.playerContainer.innerHTML = `<div class="error-message">HLS সাপোর্ট করে না।</div>`;
+          return;
+        }
+        
+        this.elements.playerContainer.appendChild(video);
+        this.state.activeVideoElement = video;
+      },
+
+      createDirectVideoPlayer(url, autoplay) {
+        const video = this.createVideoElement(autoplay);
+        video.src = url;
+        
+        this.elements.playerContainer.innerHTML = '';
+        this.elements.playerContainer.appendChild(video);
+        this.state.activeVideoElement = video;
+      },
+      
+      createVideoElement(autoplay) {
+        const video = document.createElement('video');
+        video.autoplay = autoplay;
+        video.controls = true;
+        // দ্রুত লোডের জন্য metadata প্রিলোড করা হলো
+        video.preload = 'metadata'; 
+        return video;
+      },
+
+      addDoubleTapListener() {
+        this.elements.playerContainer.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - this.state.lastTap;
+            if (tapLength < 300 && tapLength > 0) {
+                if (!this.state.activeVideoElement) return;
+
+                const rect = e.target.getBoundingClientRect();
+                const tapPosition = (e.changedTouches[0].clientX - rect.left) / rect.width;
+
+                if (tapPosition > 0.5) { // ডান দিকে ট্যাপ
+                    this.state.activeVideoElement.currentTime += 15;
+                } else { // বাম দিকে ট্যাপ
+                    this.state.activeVideoElement.currentTime -= 15;
+                }
+                e.preventDefault();
+            }
+            this.state.lastTap = currentTime;
+        });
+      },
+
+      highlightActiveCard(index) {
+        const allCards = this.elements.videoFeed.querySelectorAll('.video-card');
+        allCards.forEach((card, i) => {
+          card.classList.toggle('active', i === index);
+        });
+      },
+
+      isVideoType(url, type) {
+        const patterns = {
+          hls: /\.m3u8(\?|$)/i,
+          direct: /\.(mp4|webm|ogg)(\?|$)/i
+        };
+        return patterns[type] ? patterns[type].test(url) : false;
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      VideoPlayerApp.init();
+    });
+
+  </script>
+</body>
+</html>
