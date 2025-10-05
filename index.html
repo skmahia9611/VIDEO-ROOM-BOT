@@ -3,9 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Premium Video Player with Dynamic Playlist</title>
+  <title>Premium Video Player for Telegram</title>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;700&display=swap" rel="stylesheet">
   
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
   <style>
     :root {
       --bg-color: #121212;
@@ -33,6 +38,20 @@
       display: flex;
       height: 100vh;
       width: 100%;
+      opacity: 0; /* Initially hidden for login */
+      transition: opacity 0.5s ease-in-out;
+    }
+    
+    .app-container.visible {
+      opacity: 1;
+    }
+
+    .login-screen {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-size: 1.2rem;
     }
 
     /* Player Section */
@@ -82,6 +101,12 @@
         color: var(--text-primary);
         border-bottom: 1px solid var(--secondary-surface-color);
         margin-bottom: 16px;
+    }
+    
+    .welcome-message {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        padding: 0 8px 10px;
     }
 
     .video-feed {
@@ -211,12 +236,18 @@
   </style>
 </head>
 <body>
-  <div class="app-container">
+
+  <div class="login-screen" id="login-screen">
+      <div class="loading-indicator">সংযোগ করা হচ্ছে...</div>
+  </div>
+
+  <div class="app-container" id="app-container">
     <div class="player-section">
       <div class="player-wrapper" id="player-container"></div>
     </div>
     <div class="playlist-section">
-      <div class="playlist-header">পরবর্তী ভিডিও</div>
+      <div class="playlist-header">ভিডিও তালিকা</div>
+      <div class="welcome-message" id="welcome-message"></div>
       <div class="video-feed" id="video-feed"></div>
     </div>
   </div>
@@ -225,52 +256,84 @@
   <script>
     const VideoPlayerApp = {
       config: {
-        videos: [
-          {
-            title: "BIG FACK",
-            channel: "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
-            duration: "01.00",
-            thumbnail: "https://i.postimg.cc/QMhcv0zW/a5ffd4aa3aec07fa129bd20d465333a8-18.jpg",
-            url: "https://www.dropbox.com/scl/fi/5gdidjh9d354pkede14pk/xvideos.com_408f342fd85e3129a095abeb7634e878-2.mp4?rlkey=0mru6yssuou8nofrra8kc8mqz&st=zxn3tdt6&raw=1"
-          },
-          {
-            title: "NEW HOT SEX ",
-            channel: "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
-            duration: "09:11",
-            thumbnail: "https://i.postimg.cc/PJp3VT32/88218600d99facf22858ac30508be8d5-29.jpg",
-            url: "https://www.dropbox.com/scl/fi/hv5b26pt87bcwbhjy1c6z/xvideos.com_88218600d99facf22858ac30508be8d5.mp4?rlkey=nfvywfc7nar9khzn7dxoeuyty&st=p4vbfutb&dl=1" 
-          },
-          {
-            "title": "HORNYHOSTEL - Amy Amor",
-            "channel": "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
-            "duration": "20:20",
-            thumbnail: "https://i.postimg.cc/Tw958DSj/7e849ce80a027ea990f896b3e46c906a-7.jpg",            
-            url: "https://www.dropbox.com/scl/fi/q1bn4cbsnzshgu3d2b7dw/xvideos.com_7e849ce80a027ea990f896b3e46c906a.mp4?rlkey=zc35rhx58ugxu20k83ags6vec&st=2721x5wv&dl=1" 
-          }, 
-          {
-            title: "Big Buck Bunny - Sample",
-            channel: "𝐕𝐈𝐃𝐄𝐎 𝐑𝐎𝐎𝐌 𝐁𝐎𝐓",
-            duration: "03:32",
-            thumbnail: "",
-            url: "" 
-          }
-        ]
+        videos: [] // This will be loaded from Firebase
+      },
+      
+      firebaseConfig: {
+        apiKey: "AIzaSyA6JPDxbD5k1S-7bNikp6U_vFALPFl_fto",
+        authDomain: "daily-paybot.firebaseapp.com",
+        databaseURL: "https://daily-paybot-default-rtdb.firebaseio.com",
+        projectId: "daily-paybot",
+        storageBucket: "daily-paybot.firebasestorage.app",
+        messagingSenderId: "962422978466",
+        appId: "1:962422978466:web:43a3db97932bf82766e4fb"
       },
 
       state: {
         currentHlsInstance: null,
         activeVideoElement: null,
         lastTap: 0,
+        telegramUser: null
       },
 
       elements: {
         playerContainer: document.getElementById('player-container'),
         videoFeed: document.getElementById('video-feed'),
+        loginScreen: document.getElementById('login-screen'),
+        appContainer: document.getElementById('app-container'),
+        welcomeMessage: document.getElementById('welcome-message')
       },
       
       init() {
+        this.handleTelegramLogin();
+      },
+      
+      handleTelegramLogin() {
+          const tg = window.Telegram.WebApp;
+          tg.ready();
+
+          if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+              this.state.telegramUser = tg.initDataUnsafe.user;
+              this.elements.welcomeMessage.innerText = `স্বাগতম, ${this.state.telegramUser.first_name}!`;
+              console.log("Logged in user:", this.state.telegramUser);
+              this.initializeFirebase();
+          } else {
+              this.elements.loginScreen.innerHTML = `<div class="error-message">টেলিগ্রাম ব্যবহারকারীর তথ্য পাওয়া যায়নি। দয়া করে টেলিগ্রাম অ্যাপ থেকে খুলুন।</div>`;
+              console.error("Telegram user data not found.");
+          }
+      },
+      
+      initializeFirebase() {
+        firebase.initializeApp(this.firebaseConfig);
+        const db = firebase.database();
+        const videosRef = db.ref('/videos'); // Assumes your videos are stored in a 'videos' node
+
+        videosRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && Array.isArray(data)) {
+                // Filter out any null/empty entries from Firebase
+                this.config.videos = data.filter(video => video && video.url);
+                this.showApp();
+            } else {
+                this.elements.loginScreen.innerHTML = `<div class="error-message">ডাটাবেস থেকে কোনো ভিডিও খুঁজে পাওয়া যায়নি।</div>`;
+                console.error("No video data found in Firebase or data is not an array.");
+            }
+        }, (error) => {
+            this.elements.loginScreen.innerHTML = `<div class="error-message">ডাটাবেস সংযোগে সমস্যা হয়েছে।</div>`;
+            console.error("Firebase read failed: " + error.code);
+        });
+      },
+
+      showApp() {
+        this.elements.loginScreen.style.display = 'none';
+        this.elements.appContainer.classList.add('visible');
+
         this.renderVideoFeed();
-        this.loadVideo(0, true);
+        if (this.config.videos.length > 0) {
+            this.loadVideo(0, true);
+        } else {
+             this.elements.playerContainer.innerHTML = `<div class="error-message">কোনো ভিডিও নেই।</div>`;
+        }
         this.addDoubleTapListener();
       },
 
@@ -320,6 +383,7 @@
         const urlObj = new URL(url);
         if (autoplay) {
             urlObj.searchParams.set('autoplay', '1');
+            urlObj.searchParams.set('muted', '1'); // Mute for autoplay in iframes
         }
         iframe.src = urlObj.toString();
         iframe.allow = 'autoplay; fullscreen; picture-in-picture';
@@ -361,8 +425,9 @@
       createVideoElement(autoplay) {
         const video = document.createElement('video');
         video.autoplay = autoplay;
+        video.muted = true; // IMPORTANT for autoplay to work
+        video.playsInline = true; // Important for iOS
         video.controls = true;
-        // দ্রুত লোডের জন্য metadata প্রিলোড করা হলো
         video.preload = 'metadata'; 
         return video;
       },
@@ -378,9 +443,9 @@
                 const tapPosition = (e.changedTouches[0].clientX - rect.left) / rect.width;
 
                 if (tapPosition > 0.5) { // ডান দিকে ট্যাপ
-                    this.state.activeVideoElement.currentTime += 15;
+                    this.state.activeVideoElement.currentTime += 10;
                 } else { // বাম দিকে ট্যাপ
-                    this.state.activeVideoElement.currentTime -= 15;
+                    this.state.activeVideoElement.currentTime -= 10;
                 }
                 e.preventDefault();
             }
@@ -410,8 +475,8 @@
 
   </script>
 
-  <script async="async" data-cfasync="false" src="//pl27789452.revenuecpmgate.com/8a6b3d5354aa7bbf803c2c5809ea5261/invoke.js"></script>
   <div id="container-8a6b3d5354aa7bbf803c2c5809ea5261"></div>
+  <script async="async" data-cfasync="false" src="//pl27789452.revenuecpmgate.com/8a6b3d5354aa7bbf803c2c5809ea5261/invoke.js"></script>
 
 </body>
 </html>
